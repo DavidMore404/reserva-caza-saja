@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reserva Regional de Caza de Saja</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f5f5f5}
+#app{display:flex;flex-direction:column;height:100dvh}
+#topbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fff;border-bottom:1px solid #e0e0e0;flex-shrink:0}
+#dot{width:8px;height:8px;border-radius:50%;background:#639922;flex-shrink:0}
+#tt{font-size:13px;font-weight:600;flex:1;color:#222}
+#sub{font-size:11px;color:#aaa}
+#main{display:flex;flex:1;overflow:hidden}
+#mw{flex:1;position:relative;overflow:hidden}
+#map{width:100%;height:100%}
+#panel{width:0;overflow:hidden;transition:width .22s;background:#fff;border-left:1px solid #e8e8e8;display:flex;flex-direction:column;flex-shrink:0}
+#panel.open{width:270px}
+#ph{padding:10px 12px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:9px;flex-shrink:0}
+#pb{flex:1;overflow-y:auto;padding:12px;font-size:12px}
+#psb{padding:5px 12px;font-size:11px;color:#999;background:#fafafa;border-top:1px solid #f0f0f0;flex-shrink:0}
+#loader{position:absolute;inset:0;background:#f8f9fa;z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px}
+#loader h3{font-size:14px;color:#333}
+#loader p{font-size:12px;color:#666;text-align:center;max-width:300px;line-height:1.5}
+#dz{border:2px dashed #bbb;border-radius:10px;padding:24px 32px;text-align:center;cursor:pointer;color:#666;transition:.2s}
+#dz:hover,#dz.drag{border-color:#639922;background:#f0f8e8;color:#3a6010}
+#fi{display:none}
+#st{font-size:12px;color:#888;min-height:16px}
+#st.err{color:#c00}
+#ctrl{position:absolute;top:10px;right:10px;z-index:800;display:flex;flex-direction:column;gap:6px;display:none}
+.cb{background:#fff;border:1px solid #ccc;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;color:#333;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.cb:hover{background:#f5f5f5}
+#leg{position:absolute;bottom:26px;left:10px;z-index:800;background:#fff;border:1px solid #ddd;border-radius:6px;padding:8px 11px;box-shadow:0 1px 4px rgba(0,0,0,.1);display:none}
+.li{display:flex;align-items:center;gap:7px;padding:2px 0;font-size:11px;color:#555}
+.lc{width:12px;height:12px;border-radius:2px;flex-shrink:0}
+#gpsbadge{position:absolute;bottom:26px;right:10px;z-index:800;background:#185FA5;color:#fff;border-radius:16px;padding:4px 10px;font-size:11px;display:none}
+.lnum{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
+.stag{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:600;margin-bottom:10px}
+.sdot{width:6px;height:6px;border-radius:50%}
+.sec{font-size:10px;font-weight:700;color:#999;letter-spacing:.05em;margin:10px 0 4px;text-transform:uppercase}
+.di{display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid #f3f3f3;font-size:11px}
+.di:last-child{border:none}
+.cbtn{background:none;border:none;cursor:pointer;color:#aaa;font-size:16px;padding:0;line-height:1}
+</style>
+</head>
+<body>
+<div id="app">
+ <div id="topbar">
+  <div id="dot"></div>
+  <span id="tt">Reserva Regional de Caza de Saja</span>
+  <span id="sub">Cantabria · 2026/2027</span>
+ </div>
+ <div id="main">
+  <div id="mw">
+   <div id="loader">
+    <h3>📂 Cargando cartografía…</h3>
+    <p>Descargando los lotes de la reserva.</p>
+    <div id="st"></div>
+    <div id="dz" onclick="document.getElementById('fi').click()" style="display:none">
+     <div style="font-size:28px;margin-bottom:6px">🗺️</div>
+     <div style="font-weight:600;font-size:13px">Arrastra el .geojson aquí</div>
+     <div style="font-size:11px;color:#aaa;margin-top:3px">o haz clic para seleccionar</div>
+    </div>
+    <input type="file" id="fi" accept=".geojson,.json">
+   </div>
+   <div id="map"></div>
+   <div id="leg">
+    <div class="li"><div class="lc" style="background:#E24B4A"></div>Cacería hoy</div>
+    <div class="li"><div class="lc" style="background:#EF9F27"></div>Próximos 7 días</div>
+    <div class="li"><div class="lc" style="background:#639922"></div>Sin actividad próxima</div>
+   </div>
+   <div id="ctrl">
+    <button class="cb" id="gbtn" onclick="toggleGPS()">📍 Activar GPS</button>
+    <button class="cb" onclick="clearAndReload()" style="font-size:11px;color:#999">↩ Cambiar cartografía</button>
+   </div>
+   <div id="gpsbadge">📍 GPS activo</div>
+  </div>
+  <div id="panel">
+   <div id="ph">
+    <div class="lnum" id="pn"></div>
+    <div style="flex:1;min-width:0">
+     <div id="pname" style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+     <div id="pinfo" style="font-size:11px;color:#999"></div>
+    </div>
+    <button class="cbtn" onclick="closePanel()">×</button>
+   </div>
+   <div id="pb"></div>
+   <div id="psb"></div>
+  </div>
+ </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+<script>
+// ── URL del GeoJSON en GitHub ─────────────────────────────────────────────
+const GEOJSON_URL='https://raw.githubusercontent.com/DavidMore404/reserva-caza-saja/main/Reserva%20de%20Caza%20de%20Saja.geojson';
+const STORAGE_KEY='saja_geojson';
+
+// ── Proyecciones ──────────────────────────────────────────────────────────
+proj4.defs('EPSG:25830','+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs');
+
+// ── Calendario BOC Orden DES/09/2026 – Temporada 2026/2027 ────────────────
+function dd(s){
+  if(!s) return [];
+  return s.split(',').map(d=>{const m=parseInt(d.slice(0,2));return`${m>=9?2026:2027}-${d.slice(0,2)}-${d.slice(2)}`;});
+}
+const CAL={
+  'PROANO':{J:dd('0912,1004,1122,1226,0124,0213')},
+  'PALOMBERA ESTE':{J:dd('0912,1011,1025,1107,1226,0110,0131')},
+  'VAOCEREZO':{J:dd('0912,0927,1025,1121,1205,0123,0207,0213')},
+  'FRESNEDA Y LA GESIA':{J:dd('0912,1011,1024,1107,1121,0102,0117'),B:dd('1031,1201'),L:dd('1017,1029')},
+  'ROZALEN':{J:dd('0912,0927,1018,1115,1205,0116,0206')},
+  'VADOS SUR':{J:dd('0912,1018,1031,1115,1206,0207'),B:dd('1105,1117,1124,1201'),L:dd('1103')},
+  'CASAL ESTE':{J:dd('0912,0927,1017,1031,1121,1206,0124,0207')},
+  'TEJEU':{J:dd('0912,1010,1025,1115,1205,1226,0117,0131'),B:dd('1031,1112,1122,1128,1203')},
+  'ARABEDES':{J:dd('0912,0926,1010,1024,1107,1122,1205,1226,0109,0124,0207'),B:dd('1031,1112,1124')},
+  'BARAJO':{J:dd('0912,1010,1025,1122,0116,0131')},
+  'BARCENILLA':{J:dd('0912,1010,1025,1122,0102,0116,0131')},
+  'COTERA ORIA':{J:dd('0912,1101,1129,0109,0124')},
+  'ONQUEMADA':{J:dd('0912,1010,1025,1122,0103,0116,0131')},
+  'PALOMBERA OESTE':{J:dd('0913,1003,1025,1121,1226,0116,0207'),B:dd('1103,1115,1124')},
+  'FUENTES ESTE':{J:dd('0913,1010,1101,1128,1213,0109,0213'),B:dd('1029,1107,1114,1122,1201'),L:dd('1006,1031')},
+  'RODIL-LA BACERA':{J:dd('0913,1018,1101,1128,1206,0123,0206'),B:dd('1103,1112,1128'),L:dd('1008,1025')},
+  'CIEZA NORTE':{J:dd('0913,1004,1017,1031,1114,1212,1226,0110,0130'),B:dd('1115,1201'),L:dd('1010,1020,1103')},
+  'SAN CIFRIAN':{J:dd('0913,1003,1017,1101,1115,1212,0102,0116'),B:dd('1029,1107,1121'),L:dd('1004,1015')},
+  'VADOS NORTE':{J:dd('0913,1010,1129,1212,0109,0124'),B:dd('1103,1117,1126,1201'),L:dd('1103')},
+  'VIANA':{J:dd('0913,1003,1025,1220,0110,0117,0130'),B:dd('1031,1217')},
+  'BARCENA VERDUJAL':{J:dd('0913,1003,1018,1122,0103,0116')},
+  'SOLIGOTE':{J:dd('0913,1011,1024,1101,1122,0103,0116'),B:dd('1105,1112,1124,1130'),L:dd('1008,1020')},
+  'BICOBRES NORTE':{J:dd('0913,1011,1025,1101,1121,1206,0110,0116,0123,0206'),B:dd('1101,1115,1126')},
+  'DOBRA EL MAZO':{J:dd('0913,0926,1024,1121,1205,0110,0123,0206')},
+  'MARGAPERAS':{J:dd('0913,0926,1011,1024,1122,1205,1226')},
+  'RAIZ ACEBAL':{J:dd('0913,1011,1024,1121,1226,0123,0206')},
+  'SOBREBODIA':{J:dd('0913,1018,1114,1129,1220,0117')},
+  'ABIADA':{J:dd('0919,1004,1101,1128,1220,0110,0123'),L:dd('1017,1027')},
+  'SOTO':{J:dd('0919,1017,0102,0130,0214'),B:dd('1105,1117,1121,1201'),L:dd('1006,1022,1220')},
+  'LA GRAJERA':{J:dd('0919,1004,1018,1128,1213,0109,0124,0214'),B:dd('1107,1112,1114,1117')},
+  'MONTEQUEMAO':{J:dd('0919,1017,1031,1122,1205,0103,0130,0214'),B:dd('1029,1107,1115,1119,1217'),L:dd('1004,1022,1031')},
+  'LA COTERA':{J:dd('0919,1010,1024,1129,1212,0130,0214'),B:dd('1031,1110,1124,1127')},
+  'CANDANOSO':{J:dd('0919,1024,1128,0109,0124'),B:dd('1029,1115,1119,1124')},
+  'CANALUCU':{J:dd('0919,1004,1031,1115,1128,0102,0130,0131'),B:dd('1117,1122'),L:dd('1006,1018')},
+  'EL TALADRO':{J:dd('0919,1004,1018,1128,1219,0102,0124,0207'),B:dd('1031,1110,1115,1121,1124'),L:dd('1019')},
+  'PODA Y CORDANCAS':{J:dd('0919,1004,1017,1128,1205,1212,0103,0116,0123,0207'),B:dd('1029,1031,1103,1112,1119')},
+  'ARRETUERTO':{J:dd('0919,1004,1031,1128,1206,0117,0123,0130')},
+  'PAMANES':{J:dd('0919,1004,1017,1031,1128,0102,0117,0207')},
+  'CUESTA BERNIZO':{J:dd('0919,1003,1017,1101,1121,1205,0117,0124')},
+  'SOBREIGLESIAS':{J:dd('0919,1017,1101,1115,1128,0102,0131,0207'),B:dd('1105,1117,1124')},
+  'TORNERO':{J:dd('0920,1017,1205,0102,0131')},
+  'GUSTIO FONTECHA':{J:dd('0920,1011,1024,1107,1226,0103,0123'),B:dd('1121,1126,1203')},
+  'CIEZA SUR':{J:dd('0920,1003,1108,1128,1213,0109,0124,0130'),B:dd('1031,1117,1122,1124')},
+  'COO-SAN CIPRIANO':{J:dd('0920,1003,1025,1115,1129,0116,0131,0213'),B:dd('1105,1117,1126'),L:dd('1006,1022,1027')},
+  'LA MINA':{J:dd('0920,1004,1017,1213,0102'),B:dd('1105,1122,1129'),L:dd('1010,1022')},
+  'SERRADORES':{J:dd('0920,1128,0117,0123'),B:dd('1114,1126')},
+  'CAVINA':{J:dd('0920,1010,1025,1114,1129,1226,0109,0130'),B:dd('1101,1119,1126'),L:dd('1027')},
+  'LA FRENTE Y NAVAS':{J:dd('0920,1003,1017,1101,1121,0103,0109,0117,0123,0214'),B:dd('1031,1105,1119'),L:dd('1006,1015,1030')},
+  'LA CESTERA':{J:dd('0920,1024,1101,1121,1227,0117'),B:dd('1029,1101,1105,1119')},
+  'VALLEJAS':{J:dd('0920,1003,1031,1206,1220,0103,0130')},
+  'LA HOYONA':{J:dd('0920,1003,1018,1121,1219,0109')},
+  'MILEBANOS':{J:dd('0920,1003,1018,1121,1220,0117,0214')},
+  'PANDA Y CARRIELDA':{J:dd('0920,1004,1017,1101,1115,1129,1227,0103,0116,0131')},
+  'ARGUESO':{J:dd('0926,1024,1122,1212,0116,0207,0213'),L:dd('1008,1020')},
+  'IZARA SUANO':{J:dd('0926,1018,1108,1206,0109,0123,0130'),B:dd('1115')},
+  'MONTABLIZ':{J:dd('0926,1010,1101,1205,0103,0117,0131,0213'),B:dd('1103,1114,1122')},
+  'PONIENTE':{J:dd('0926,1010,1024,1115,1205,1213,1227,0116,0207,0213'),L:dd('1013,1027')},
+  'MOZAGRUCU':{J:dd('0926,1011,1031,1122,1213,0110,0213'),B:dd('1103,1124,1201'),L:dd('1004,1013,1029')},
+  'MONTE AA':{J:dd('0926,1011,1122,1205,0103,0213'),B:dd('1112,1124'),L:dd('1020,1029')},
+  'PENA FRESNEDA':{J:dd('0926,1011,1101,1122,0103,0123'),B:dd('1112,1126')},
+  'NEGREU':{J:dd('0926,1010,1025,1101,1129,1220,0110,0130'),B:dd('1103,1115,1119'),L:dd('1015,1022,1029')},
+  'CASAL NORTE':{J:dd('0926,1011,1101,1114,1129,1206,0110,0123,0206'),B:dd('1026,1201')},
+  'FONFRICA':{J:dd('0926,1011,1122,1205,1227,0110,0123,0207,0213')},
+  'LA ROBLA':{J:dd('0926,1024,1206,1213,0110,0123,0206')},
+  'FUENTES OESTE':{J:dd('0927,1018,1115,1121,1227,0117,0206'),B:dd('1103,1122')},
+  'VILLACANTID':{J:dd('0927,1025,1121,1213,0103,0116,0131,0214')},
+  'MOZAGRO':{J:dd('0927,1018,1128,1227,0109,0214'),B:dd('1101,1114,1117,1121,1201'),L:dd('1008,1027')},
+  'PENA COLSA':{J:dd('0927,1011,1031,1129,1213,1226,0116,0207'),B:dd('1101,1112,1119,1124')},
+  'BICOBRES SUR':{J:dd('0927,1003,1031,1115,1128,0102,0116,0130,0214')},
+  'CALEJO':{J:dd('0927,1114,1122,0109,0123,0213')},
+  'MONTE CUBINO':{J:dd('0927,1101,1115,1128,0124,0213')},
+  'MAZANDRERO':{J:dd('0927,1024,1115,1212,1227,0124,0206'),L:dd('1013,1025')},
+  'VADOS CENTRO':{J:dd('1101,1205,1227,0123'),B:dd('1103,1112,1126,1201')},
+  'DOBRA REGAOS':{J:dd('1003,1101,1129,0109,0213')},
+  'MILAGRO':{J:dd('1004,1031,1122,1219,1226,0103,0124')},
+  'MATOSENAS':{J:dd('1004,1018,1114,1129,1212,0117,0130,0214')},
+  'VALFRIA':{J:dd('0927,1025,1121,1206,1213,0110,0116,0130,0213'),B:dd('1112,1117,1126')},
+  'LA DEHESA':{J:dd('0927,1003,1025,1121,1220,0110,0206,0214'),B:dd('1126,1140'),L:dd('1008,1022,1031')},
+  'LA MAHILLA':{J:dd('1004,1017,1101,1115,1206,1212,0117,0124'),B:dd('1103,1117,1129')},
+};
+
+const ALIAS={
+  'FRESNEDA Y GESIA':'FRESNEDA Y LA GESIA','COO SAN CIPRIANO':'COO-SAN CIPRIANO',
+  'SAN CIFRIAB':'SAN CIFRIAN','SAN CIFRIÁBN':'SAN CIFRIAN','CAVIÑA':'CAVINA',
+  'EL TÁLADRO':'EL TALADRO','MOZAGRUCO':'MOZAGRUCU','PÁMANES':'PAMANES',
+  'ARGÜESO':'ARGUESO','NEGRÉU':'NEGREU','TEJÉU':'TEJEU','FONFRÍA':'FONFRICA',
+  'MILEBAÑOS':'MILEBANOS','VALLEJAS DE SAN PABLO':'VALLEJAS',
+  'GUSTÍO FONTECHA':'GUSTIO FONTECHA','PEÑA COLSA':'PENA COLSA',
+  'PEÑA FRESNEDA':'PENA FRESNEDA','BÁRCENA VERDUJAL':'BARCENA VERDUJAL',
+  'VALFRÍA':'VALFRIA','ROZALÉN':'ROZALEN','LA MIÑA':'LA MINA','PROAÑO':'PROANO',
+  'MONTE Aá':'MONTE AA','MONTE AÁ':'MONTE AA',
+};
+
+function normalize(s){
+  if(!s) return '';
+  let n=s.toUpperCase().trim()
+    .replace(/Á/g,'A').replace(/É/g,'E').replace(/Í/g,'I').replace(/Ó/g,'O').replace(/Ú/g,'U').replace(/Ñ/g,'N')
+    .replace(/\s+/g,' ');
+  return ALIAS[n]||n;
+}
+function getDates(name){const k=normalize(name);return CAL[k]||CAL[ALIAS[k]]||null;}
+
+// ── Mapa ──────────────────────────────────────────────────────────────────
+const TODAY=new Date();
+const map=L.map('map').setView([43.12,-4.38],11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);
+
+const SC={active:'#E24B4A',upcoming:'#EF9F27',none:'#639922'};
+const SB={active:'#FCEBEB',upcoming:'#FAEEDA',none:'#EAF3DE'};
+const SL={active:'Cacería hoy',upcoming:'Cacería próxima (7d)',none:'Sin actividad próxima'};
+const SE={J:'🐗 Jabalí',B:'🎯 Sorda/Laguneja',L:'🐇 Liebre'};
+
+let layerMap={},activeLot=null,gpsWatcher=null,gpsMarker=null,lotsData=[],gpsActive=false;
+
+function getStatus(dates){
+  if(!dates) return 'none';
+  const all=[].concat(...Object.values(dates));
+  for(const d of all){if(Math.abs(new Date(d+'T12:00:00')-TODAY)<86400000) return 'active';}
+  for(const d of all){const dt=new Date(d+'T12:00:00')-TODAY;if(dt>0&&dt<=7*86400000) return 'upcoming';}
+  return 'none';
+}
+function fmtD(ds){return new Date(ds+'T12:00:00').toLocaleDateString('es-ES',{weekday:'short',day:'2-digit',month:'short'});}
+
+function openPanel(lot){
+  if(activeLot){const p=layerMap[activeLot.id];if(p)p.layer.setStyle({color:p.col,fillColor:p.col,fillOpacity:.3,weight:2,opacity:.85});}
+  activeLot=lot;
+  const{st,col,layer}=layerMap[lot.id]||{};
+  if(layer) layer.setStyle({color:col,fillColor:col,fillOpacity:.5,weight:3,opacity:1});
+  document.getElementById('pn').style.cssText=`background:${SB[st]||SB.none};color:${col||SC.none}`;
+  document.getElementById('pn').textContent=lot.id;
+  document.getElementById('pname').textContent=lot.name;
+  document.getElementById('pinfo').textContent=(lot.area||'—')+(lot.comarca?' · '+lot.comarca:'');
+  const dates=getDates(lot.name);
+  let html=`<div class="stag" style="background:${SB[st]};color:${col}"><div class="sdot" style="background:${col}"></div>${SL[st]}</div>`;
+  if(dates&&Object.keys(dates).length){
+    Object.entries(dates).forEach(([sp,arr])=>{
+      if(!arr||!arr.length) return;
+      html+=`<div class="sec">${SE[sp]||sp}</div>`;
+      arr.forEach(d=>{
+        const dt=new Date(d+'T12:00:00')-TODAY;
+        const isT=Math.abs(dt)<86400000,isU=dt>0&&dt<=7*86400000;
+        const dot=isT?'#E24B4A':isU?'#EF9F27':'#ddd',tc=isT||isU?'#222':'#aaa';
+        html+=`<div class="di"><div class="sdot" style="background:${dot}"></div><span style="color:${tc}">${fmtD(d)}${isT?' 🔴 HOY':isU?' 🟠 próx.':''}</span></div>`;
+      });
+    });
+  } else {
+    html+=`<div style="color:#bbb;font-size:11px;margin-top:8px">Sin datos de cacería para este lote.</div>`;
+  }
+  const tot=dates?Object.values(dates).reduce((a,b)=>a+b.length,0):0;
+  document.getElementById('pb').innerHTML=html;
+  document.getElementById('psb').textContent=tot?`${tot} jornadas esta temporada`:'Datos pendientes';
+  document.getElementById('panel').classList.add('open');
+  setTimeout(()=>map.invalidateSize(),250);
+}
+function closePanel(){
+  if(activeLot){const p=layerMap[activeLot.id];if(p)p.layer.setStyle({color:p.col,fillColor:p.col,fillOpacity:.3,weight:2,opacity:.85});activeLot=null;}
+  document.getElementById('panel').classList.remove('open');
+  setTimeout(()=>map.invalidateSize(),250);
+}
+
+// ── Reproyección ──────────────────────────────────────────────────────────
+function detectCRS(gj){
+  const c=gj.crs?.properties?.name||'';
+  if(c.includes('25830')||c.includes('32630')) return 'EPSG:25830';
+  try{const f=gj.features?.[0]?.geometry?.coordinates.flat(10);if(Math.abs(f[0])>180)return 'EPSG:25830';}catch(e){}
+  return null;
+}
+function reproject(gj,epsg){
+  function rC(c){if(typeof c[0]==='number'){const[lo,la]=proj4(epsg,'WGS84',[c[0],c[1]]);return[lo,la];}return c.map(rC);}
+  const out=JSON.parse(JSON.stringify(gj));
+  out.features.forEach(f=>{if(f.geometry?.coordinates)f.geometry.coordinates=rC(f.geometry.coordinates);});
+  return out;
+}
+
+function initMap(gj){
+  Object.values(layerMap).forEach(v=>{try{map.removeLayer(v.layer);if(v.mk)map.removeLayer(v.mk);}catch(e){}});
+  layerMap={};lotsData=[];activeLot=null;let idx=0;
+  gj.features.forEach(f=>{
+    const p=f.properties||{};
+    const num=p.NUMERO||p.numero||p.NUM||idx+1;
+    const name=p.DENOMINACI||p.NOMBRE||p.nombre||p.NAME||p.name||('Lote '+num);
+    const ha=p.HECTARES||p.hectares?(((p.HECTARES||p.hectares)||0)|0)+' ha':'—';
+    const comarca=p.COMARCA||p.comarca||'';
+    const dates=getDates(name);
+    const st=getStatus(dates),col=SC[st];
+    const lot={id:num,name,area:ha,comarca,dates,st,col};
+    lotsData.push(lot);
+    const layer=L.geoJSON(f,{style:{color:col,fillColor:col,fillOpacity:.3,weight:2,opacity:.85}}).addTo(map);
+    const ctr=layer.getBounds().getCenter();
+    const mk=L.marker(ctr,{icon:L.divIcon({
+      html:`<div style="width:20px;height:20px;background:${col};border-radius:50%;border:2.5px solid rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.2)">${num}</div>`,
+      className:'',iconSize:[20,20],iconAnchor:[10,10]
+    })}).addTo(map);
+    layerMap[num]={layer,mk,lot,st,col};
+    layer.on('click',()=>openPanel(lot));mk.on('click',()=>openPanel(lot));idx++;
+  });
+  map.fitBounds(L.geoJSON(gj).getBounds().pad(.04));
+  document.getElementById('leg').style.display='';
+  document.getElementById('ctrl').style.display='flex';
+  setTimeout(()=>map.invalidateSize(),100);
+}
+
+function processGeoJSON(text,save=true){
+  const st=document.getElementById('st');
+  try{
+    let gj=JSON.parse(text);
+    if(!gj.features?.length) throw new Error('Sin entidades');
+    const epsg=detectCRS(gj);
+    if(epsg) gj=reproject(gj,epsg);
+    if(save){try{localStorage.setItem(STORAGE_KEY,text);}catch(e){}}
+    document.getElementById('loader').style.display='none';
+    initMap(gj);
+  }catch(e){st.className='err';st.textContent='Error: '+e.message;}
+}
+
+// ── Carga inicial ─────────────────────────────────────────────────────────
+(async()=>{
+  const st=document.getElementById('st');
+  // 1. Intentar desde GitHub
+  try{
+    st.textContent='Descargando cartografía…';
+    const res=await fetch(GEOJSON_URL);
+    if(res.ok){const text=await res.text();processGeoJSON(text,true);return;}
+  }catch(e){}
+  // 2. Intentar desde localStorage (sin conexión)
+  try{
+    const saved=localStorage.getItem(STORAGE_KEY);
+    if(saved){st.textContent='Sin conexión — cargando mapa guardado…';processGeoJSON(saved,false);return;}
+  }catch(e){}
+  // 3. Pedir archivo manualmente
+  st.textContent='No se pudo descargar la cartografía. Cárgala manualmente.';
+  document.getElementById('dz').style.display='block';
+})();
+
+// ── Subida manual ─────────────────────────────────────────────────────────
+document.getElementById('fi').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();r.onload=ev=>processGeoJSON(ev.target.result,true);r.readAsText(f);
+});
+const dz=document.getElementById('dz');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
+dz.addEventListener('drop',e=>{
+  e.preventDefault();dz.classList.remove('drag');
+  const f=e.dataTransfer.files[0];if(!f)return;
+  const r=new FileReader();r.onload=ev=>processGeoJSON(ev.target.result,true);r.readAsText(f);
+});
+function clearAndReload(){
+  if(!confirm('¿Borrar cartografía guardada?'))return;
+  try{localStorage.removeItem(STORAGE_KEY);}catch(e){}
+  location.reload();
+}
+
+// ── GPS ───────────────────────────────────────────────────────────────────
+function toggleGPS(){if(gpsActive)stopGPS();else startGPS();}
+function startGPS(){
+  if(!navigator.geolocation){alert('GPS no disponible');return;}
+  const btn=document.getElementById('gbtn');
+  btn.textContent='⌛ Localizando…';
+  gpsWatcher=navigator.geolocation.watchPosition(pos=>{
+    gpsActive=true;
+    btn.textContent='📍 GPS activo';btn.style.background='#e8f5e9';
+    document.getElementById('gpsbadge').style.display='block';
+    const ll=[pos.coords.latitude,pos.coords.longitude];
+    if(gpsMarker)map.removeLayer(gpsMarker);
+    gpsMarker=L.layerGroup([
+      L.circle(ll,{radius:pos.coords.accuracy/2,color:'#185FA5',fillColor:'#378ADD',fillOpacity:.12,weight:1}),
+      L.circleMarker(ll,{radius:8,color:'#fff',fillColor:'#378ADD',fillOpacity:1,weight:2.5})
+    ]).addTo(map);
+    if(pos.coords.accuracy<500)map.setView(ll,Math.max(map.getZoom(),14));
+    const inLot=lotsData.find(lot=>{const lm=layerMap[lot.id];return lm&&lm.layer.getBounds().contains(ll);});
+    if(inLot&&(!activeLot||activeLot.id!==inLot.id))openPanel(inLot);
+  },err=>{
+    const msg={1:'Permiso denegado.',2:'GPS no disponible.',3:'Tiempo agotado.'};
+    alert(msg[err.code]||'Error GPS');stopGPS();
+  },{enableHighAccuracy:true,timeout:15000,maximumAge:5000});
+}
+function stopGPS(){
+  if(gpsWatcher!=null){navigator.geolocation.clearWatch(gpsWatcher);gpsWatcher=null;}
+  gpsActive=false;
+  const btn=document.getElementById('gbtn');
+  if(btn){btn.textContent='📍 Activar GPS';btn.style.background='';}
+  document.getElementById('gpsbadge').style.display='none';
+  if(gpsMarker){map.removeLayer(gpsMarker);gpsMarker=null;}
+}
+</script>
+</body>
+</html>
